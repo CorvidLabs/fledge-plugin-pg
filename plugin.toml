@@ -1,0 +1,18 @@
+[plugin]
+name = "fledge-plugin-pg"
+version = "0.1.0"
+description = "Postgres database management: query, schema, with destructive-statement safety"
+author = "CorvidLabs"
+protocol = "fledge-v1"
+
+[[commands]]
+name = "pg"
+description = "Postgres database management"
+binary = "bin/fledge-pg"
+
+[hooks]
+
+[capabilities]
+exec = true
+store = true
+metadata = true

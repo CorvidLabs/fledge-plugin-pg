@@ -1,0 +1,379 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Save original stdout for protocol messages; command substitutions
+# capture stdout, so protocol writes must go to fd3 to reach the host.
+exec 3>&1
+
+# --- fledge-v1 protocol helpers ---
+
+send() { printf '%s\n' "$1" >&3; }
+
+recv() {
+  local line
+  IFS= read -r line
+  printf '%s\n' "$line"
+}
+
+json_obj() { jq -cn "$@"; }
+
+send_output() { send "$(json_obj --arg t "$1" '{type:"output",text:$t}')"; }
+send_log() { send "$(json_obj --arg l "$1" --arg m "$2" '{type:"log",level:$l,message:$m}')"; }
+send_error() { send_log "error" "$1"; }
+
+send_exec() {
+  local id="$1" cmd="$2" cwd="${3:-}"
+  if [ -n "$cwd" ]; then
+    send "$(json_obj --arg id "$id" --arg cmd "$cmd" --arg cwd "$cwd" '{type:"exec",id:$id,command:$cmd,cwd:$cwd}')"
+  else
+    send "$(json_obj --arg id "$id" --arg cmd "$cmd" '{type:"exec",id:$id,command:$cmd}')"
+  fi
+  recv
+}
+
+# --- Response parsing helpers ---
+
+resp_stdout() { printf '%s' "$1" | jq -r '.value.stdout // ""' 2>/dev/null; }
+resp_stderr() { printf '%s' "$1" | jq -r '.value.stderr // ""' 2>/dev/null; }
+resp_code() { printf '%s' "$1" | jq -r '.value.code // 0' 2>/dev/null; }
+
+# --- Parse init message ---
+
+INIT=$(recv)
+ARGS=$(printf '%s' "$INIT" | jq -r '.args // [] | .[]' 2>/dev/null)
+PROJECT_ROOT=$(printf '%s' "$INIT" | jq -r '.project.root // "."' 2>/dev/null)
+
+declare -a ARGV=()
+while IFS= read -r arg; do
+  [ -n "$arg" ] && ARGV+=("$arg")
+done <<< "$ARGS"
+
+SUBCMD="${ARGV[0]:-help}"
+
+# --- Connection resolution ---
+#
+# Precedence: an explicit --url wins, then the DATABASE_URL environment
+# variable. A missing URL is a clean error, never a silent connection
+# attempt with an empty string. Mirrors the Merlin pgrun reference.
+
+resolve_url() {
+  local explicit="$1"
+  if [ -n "$explicit" ]; then
+    printf '%s' "$explicit"
+    return 0
+  fi
+  if [ -n "${DATABASE_URL:-}" ]; then
+    printf '%s' "$DATABASE_URL"
+    return 0
+  fi
+  return 1
+}
+
+# --- Destructive-statement gate ---
+#
+# Scan SQL for any destructive keyword that should be blocked by
+# default. Tokenizes on non-alphabetic boundaries (via tr) so the check
+# works regardless of whether the keyword is followed by a space, tab,
+# newline, semicolon, or end-of-string. A naive trailing-space check is
+# trivially bypassable (DELETE\nFROM or DELETE;), so we tokenize.
+#
+# Comparison is case-insensitive. SELECT is intentionally NOT in the
+# list. Column names like dropped_at do not trip the DROP guard because
+# tokenization splits at the underscore: dropped and at are separate
+# tokens, neither matches.
+#
+# The keyword set matches the SQLite sql plugin's intent plus
+# Postgres-specific schema and access-control mutators. TRUNCATE and
+# ALTER carry over; GRANT and REVOKE mutate access control and are
+# treated as destructive too. Prints the first matched keyword to
+# stdout and returns 0 when something is found; returns 1 when the SQL
+# is safe to run without --allow-destructive.
+
+first_destructive_keyword() {
+  local sql="$1"
+  local destructive=" DROP TRUNCATE DELETE UPDATE REPLACE ALTER GRANT REVOKE "
+  local word upper
+  # Replace every non-alphabetic byte with a newline, then iterate the
+  # resulting word tokens. LC_ALL=C keeps tr operating byte-wise.
+  # The `|| [ -n "$word" ]` keeps the loop processing the final token
+  # when tr leaves it unterminated (a SQL of just "DROP" produces no
+  # trailing newline, and bare `read` would otherwise drop that line).
+  while IFS= read -r word || [ -n "$word" ]; do
+    [ -z "$word" ] && continue
+    upper=$(printf '%s' "$word" | LC_ALL=C tr '[:lower:]' '[:upper:]')
+    case "$destructive" in
+      *" $upper "*)
+        printf '%s' "$upper"
+        return 0
+        ;;
+    esac
+  done < <(printf '%s' "$sql" | LC_ALL=C tr -c '[:alpha:]' '\n')
+  return 1
+}
+
+# --- Subcommands ---
+
+cmd_query() {
+  local url_arg=""
+  local format="table"
+  local allow_destructive=0
+  local sql_parts=()
+  local param_names=()
+  local param_values=()
+  local i=1
+  while [ $i -lt ${#ARGV[@]} ]; do
+    case "${ARGV[$i]}" in
+      --url) i=$((i + 1)); url_arg="${ARGV[$i]:-}" ;;
+      --list) format="list" ;;
+      --csv) format="csv" ;;
+      --json) format="json" ;;
+      --allow-destructive) allow_destructive=1 ;;
+      --param)
+        i=$((i + 1))
+        local kv="${ARGV[$i]:-}"
+        local pname="${kv%%=*}"
+        local pval="${kv#*=}"
+        if [ -z "$pname" ] || [ "$pname" = "$kv" ]; then
+          send_error "Bad --param syntax: expected name=value, got '$kv'"
+          exit 1
+        fi
+        # Strict name validation; anything else lets a malicious caller
+        # embed SQL after the substitution point.
+        if ! [[ "$pname" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+          send_error "Bad --param name: '$pname' (must match [A-Za-z_][A-Za-z0-9_]*)"
+          exit 1
+        fi
+        param_names+=("$pname")
+        param_values+=("$pval")
+        ;;
+      *) sql_parts+=("${ARGV[$i]}") ;;
+    esac
+    i=$((i + 1))
+  done
+
+  local sql="${sql_parts[*]+${sql_parts[*]}}"
+  if [ -z "$sql" ]; then
+    send_error "Usage: fledge pg query [--url <conn>] [--json|--list|--csv] [--param name=value]... [--allow-destructive] <sql>"
+    exit 1
+  fi
+
+  # Destructive gate. Detect once; refuse unless --allow-destructive.
+  local blocked
+  if blocked=$(first_destructive_keyword "$sql"); then
+    if [ "$allow_destructive" -ne 1 ]; then
+      send_error "Destructive operation blocked ('$blocked' in SQL). Pass --allow-destructive to override. This guard prevents an agent from silently destroying data in Postgres via raw SQL (mirrors fledge-plugin-sql)."
+      exit 1
+    fi
+  fi
+
+  local url
+  if ! url=$(resolve_url "$url_arg"); then
+    send_error "No Postgres URL: pass --url <conn> or set DATABASE_URL in the environment."
+    exit 1
+  fi
+
+  # psql output flags per format, held as an array so values containing
+  # shell metacharacters (the `|` field separator) survive intact. Each
+  # element is shell-quoted via printf %q when the command is assembled.
+  # --json uses a server-side json_agg; the others use psql formatters.
+  #   list  -> unaligned, pipe-separated, with header
+  #   csv   -> CSV format, with header
+  #   table -> aligned table (psql default)
+  local psql_flags=("-X" "-w")
+  local run_sql="$sql"
+  case "$format" in
+    json)
+      # Wrap the caller's query so the server returns a single JSON
+      # array. coalesce keeps an empty result as [] rather than NULL.
+      # Tuples-only + unaligned so psql prints just the JSON payload.
+      run_sql="SELECT coalesce(json_agg(t), '[]'::json) FROM ( $sql ) t;"
+      psql_flags+=("-t" "-A")
+      ;;
+    list) psql_flags+=("-A" "-F" "|") ;;
+    csv) psql_flags+=("--csv") ;;
+    *) ;;
+  esac
+
+  # Bind parameters via psql variables. Each value is passed with
+  # --set name=value (psql handles the value verbatim), and referenced
+  # in SQL as :'name' (single-quoted interpolation), which quotes and
+  # escapes the value as a string literal so it cannot inject SQL.
+  local set_flags=()
+  local j=0
+  while [ "$j" -lt "${#param_names[@]}" ]; do
+    set_flags+=("--set" "${param_names[$j]}=${param_values[$j]}")
+    j=$((j + 1))
+  done
+
+  # Build the psql command. The connection URL and SQL are passed via
+  # printf %q shell-escaping so neither can break out into the shell.
+  local safe_url safe_sql
+  safe_url=$(printf '%q' "$url")
+  safe_sql=$(printf '%q' "$run_sql")
+
+  # Shell-quote every flag (output flags + --set bindings) so the
+  # assembled command string cannot be re-split or interpreted.
+  local flag_part=""
+  local f
+  for f in "${psql_flags[@]}"; do
+    flag_part+=" $(printf '%q' "$f")"
+  done
+  for f in "${set_flags[@]+${set_flags[@]}}"; do
+    flag_part+=" $(printf '%q' "$f")"
+  done
+
+  local cmd
+  cmd="printf '%s' $safe_sql | psql${flag_part} -d $safe_url"
+
+  local result exit_code
+  result=$(send_exec "query" "$cmd" "$PROJECT_ROOT")
+  exit_code=$(resp_code "$result")
+
+  if [ "$exit_code" != "0" ]; then
+    local stderr
+    stderr=$(resp_stderr "$result")
+    send_error "Query failed: $stderr"
+    exit 1
+  fi
+
+  local stdout
+  stdout=$(resp_stdout "$result")
+  if [ "$format" = "json" ]; then
+    # Trim surrounding whitespace psql adds around tuples-only output.
+    local trimmed
+    trimmed=$(printf '%s' "$stdout" | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [ -z "$trimmed" ]; then
+      send_output "[]"
+    else
+      send "$(printf '%s' "$trimmed" | jq -Rsc '{type:"output",text:.}')"
+    fi
+  elif [ -n "$stdout" ]; then
+    send "$(printf '%s' "$stdout" | jq -Rsc '{type:"output",text:.}')"
+  else
+    send_output "(no results)"
+  fi
+}
+
+cmd_schema() {
+  local url_arg=""
+  local format="text"
+  local i=1
+  while [ $i -lt ${#ARGV[@]} ]; do
+    case "${ARGV[$i]}" in
+      --url) i=$((i + 1)); url_arg="${ARGV[$i]:-}" ;;
+      --json) format="json" ;;
+    esac
+    i=$((i + 1))
+  done
+
+  local url
+  if ! url=$(resolve_url "$url_arg"); then
+    send_error "No Postgres URL: pass --url <conn> or set DATABASE_URL in the environment."
+    exit 1
+  fi
+
+  # Pull tables, views, and indexes from the catalog in the current
+  # database, restricted to user schemas (excludes pg_catalog and
+  # information_schema). For text we emit one definition line per
+  # object; for JSON an array of {type,name,schema,definition}.
+  local sql_query
+  if [ "$format" = "json" ]; then
+    sql_query=$(cat <<'SQL'
+SELECT coalesce(json_agg(row_to_json(t)), '[]'::json) FROM (
+  SELECT 'table' AS type, schemaname AS schema, tablename AS name,
+         format('CREATE TABLE %I.%I (...)', schemaname, tablename) AS definition
+  FROM pg_catalog.pg_tables
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  UNION ALL
+  SELECT 'view' AS type, schemaname AS schema, viewname AS name,
+         pg_catalog.pg_get_viewdef(format('%I.%I', schemaname, viewname)::regclass, true) AS definition
+  FROM pg_catalog.pg_views
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  UNION ALL
+  SELECT 'index' AS type, schemaname AS schema, indexname AS name,
+         indexdef AS definition
+  FROM pg_catalog.pg_indexes
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  ORDER BY type, schema, name
+) t;
+SQL
+)
+  else
+    sql_query=$(cat <<'SQL'
+SELECT string_agg(line, E'\n') FROM (
+  SELECT format('TABLE %I.%I', schemaname, tablename) AS line
+  FROM pg_catalog.pg_tables
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  UNION ALL
+  SELECT indexdef AS line
+  FROM pg_catalog.pg_indexes
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  UNION ALL
+  SELECT format('VIEW %I.%I', schemaname, viewname) AS line
+  FROM pg_catalog.pg_views
+  WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+  ORDER BY line
+) s;
+SQL
+)
+  fi
+
+  local safe_url safe_sql
+  safe_url=$(printf '%q' "$url")
+  safe_sql=$(printf '%q' "$sql_query")
+
+  local cmd
+  cmd="printf '%s' $safe_sql | psql -X -w -t -A -d $safe_url"
+
+  local result exit_code
+  result=$(send_exec "schema" "$cmd" "$PROJECT_ROOT")
+  exit_code=$(resp_code "$result")
+
+  if [ "$exit_code" != "0" ]; then
+    local stderr
+    stderr=$(resp_stderr "$result")
+    send_error "Schema dump failed: $stderr"
+    exit 1
+  fi
+
+  local stdout
+  stdout=$(resp_stdout "$result")
+  local trimmed
+  trimmed=$(printf '%s' "$stdout" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  if [ "$format" = "json" ]; then
+    if [ -z "$trimmed" ]; then
+      send_output "[]"
+    else
+      send "$(printf '%s' "$trimmed" | jq -Rsc '{type:"output",text:.}')"
+    fi
+  elif [ -n "$trimmed" ]; then
+    send "$(printf '%s' "$stdout" | jq -Rsc '{type:"output",text:.}')"
+  else
+    send_output "(empty database)"
+  fi
+}
+
+cmd_help() {
+  send_output "fledge-plugin-pg: Postgres database management"
+  send_output ""
+  send_output "Connection: pass --url <conn> or set DATABASE_URL in the environment."
+  send_output ""
+  send_output "Commands:"
+  send_output "  query [--url <conn>] [--json|--list|--csv] [--param name=value]... [--allow-destructive] <sql>"
+  send_output "        Execute SQL against a Postgres database."
+  send_output "  schema [--url <conn>] [--json]"
+  send_output "        Dump tables, views, and indexes for user schemas."
+  send_output ""
+  send_output "Destructive statements (DELETE/UPDATE/DROP/TRUNCATE/ALTER/REPLACE/GRANT/REVOKE)"
+  send_output "are refused by default. Pass --allow-destructive to override."
+}
+
+case "$SUBCMD" in
+  query)  cmd_query ;;
+  schema) cmd_schema ;;
+  help|--help|-h) cmd_help ;;
+  *)
+    send_error "Unknown command: $SUBCMD. Run: fledge pg help"
+    exit 1
+    ;;
+esac

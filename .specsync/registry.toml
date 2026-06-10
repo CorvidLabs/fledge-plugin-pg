@@ -1,0 +1,5 @@
+[registry]
+name = "fledge-plugin-pg"
+
+[specs]
+pg = "specs/pg/pg.spec.md"
