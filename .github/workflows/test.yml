@@ -3,12 +3,25 @@ name: test
 on:
   push:
     branches: [main]
+    paths:
+      - bin/**
+      - test/**
+      - .github/workflows/test.yml
   pull_request:
     branches: [main]
+    paths:
+      - bin/**
+      - test/**
+      - .github/workflows/test.yml
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -29,7 +42,7 @@ jobs:
       PG_TEST_URL: postgres://pg:pg@localhost:5432/pgtest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install psql client
         run: |

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # single-quoted strings are jq programs; $vars are jq --arg bindings, not shell expansions
 set -euo pipefail
 
 # Save original stdout for protocol messages; command substitutions
