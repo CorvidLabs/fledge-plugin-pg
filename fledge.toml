@@ -1,0 +1,10 @@
+# fledge.toml — project task definitions
+[tasks]
+lint = "shellcheck bin/fledge-pg"
+syntax = "bash -n bin/fledge-pg"
+test = "python3 test/test.py"
+manifest = "grep -q 'binary = \"bin/fledge-pg\"' plugin.toml && grep -q 'protocol = \"fledge-v1\"' plugin.toml"
+
+[lanes.verify]
+description = "Lint and test the guarded Postgres plugin"
+steps = ["lint", "syntax", "test", "manifest"]

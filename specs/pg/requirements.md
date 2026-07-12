@@ -11,12 +11,29 @@ spec: pg.spec.md
 
 ## Acceptance Criteria
 
-- `fledge pg query` executes SQL and returns formatted results
-- `fledge pg schema` shows tables, views, and indexes for user schemas
-- Connection resolves from `--url` first, then `DATABASE_URL`
-- Destructive statements are refused unless `--allow-destructive` is passed
-- `--param name=value` binds values safely and rejects injection attempts
-- All commands use the fledge-v1 protocol for I/O
+### REQ-pg-001
+
+`fledge pg query` executes SQL and returns the selected table, JSON, CSV, or list format.
+
+### REQ-pg-002
+
+`fledge pg schema` shows tables, views, and indexes for user schemas.
+
+### REQ-pg-003
+
+Connection resolution uses explicit `--url` before `DATABASE_URL` and fails before execution when neither exists.
+
+### REQ-pg-004
+
+Destructive statements are refused unless `--allow-destructive` is passed.
+
+### REQ-pg-005
+
+`--param name=value` binds values safely and rejects invalid names or injection attempts.
+
+### REQ-pg-006
+
+All commands use the fledge-v1 protocol for input, output, and host execution.
 
 ## Constraints
 
