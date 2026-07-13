@@ -1,3 +1,11 @@
 {
-  "approvals": []
+  "approvals": [
+    {
+      "gate": "definition",
+      "actor": "user:0xLeif",
+      "timestamp": 1783955347,
+      "digest": "b10b93682a9702dd66d37d3fbe88a697515dbd202c136d542dc0e566a6b701dc",
+      "note": "Definition approved after current review corrections, exact requirement evidence, and passing native Fledge verification."
+    }
+  ]
 }

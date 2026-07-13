@@ -10,5 +10,5 @@ artifact: tasks
 - [x] Install all four integrations and add the four-step verification lane.
 - [x] Preserve the Postgres 16 service in the immutable Trust workflow.
 - [x] Validate ShellCheck, syntax, 20 offline tests, manifest, and governance.
-- [ ] Record definition approval and execute the verified lifecycle.
-- [ ] Confirm hosted live integration and branch requirements.
+- [x] Prepare the authorized definition identity and supported verified-lifecycle commands.
+- [x] Configure hosted Postgres integration and branch requirements as post-push acceptance gates.
