@@ -15,6 +15,9 @@ spec: pg.spec.md
 
 `fledge pg query` SHALL execute SQL and return the selected table, JSON, CSV, or list format.
 
+Acceptance Criteria
+- Offline and hosted query cases validate supported output formats.
+
 ### REQ-pg-002
 
 `fledge pg schema` SHALL show tables, views, and indexes for user schemas.

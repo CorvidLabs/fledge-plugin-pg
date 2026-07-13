@@ -1,6 +1,6 @@
 ---
 module: pg
-version: 1
+version: 2
 status: active
 files:
   - bin/fledge-pg
@@ -107,3 +107,4 @@ CREATE UNIQUE INDEX agents_pkey ON public.agents USING btree (name)
 | Version | Date | Changes |
 |---------|------|---------|
 | 1 | 2026-06-10 | Initial spec. `pg` mirrors `sql` for Postgres: `query` (`--json`/`--list`/`--csv`/`--param`) and `schema`, connection via `--url` or `DATABASE_URL`, destructive-statement gate with `--allow-destructive` override. `init`/`migrate` omitted (no clean psql analog). No audit log (the Merlin-internal pgrun keeps one; this public plugin relies on a clear refusal + non-zero exit). |
+| 2026-07-13 | CHG-0001-adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-postgres-fledge-plugin: Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Postgres Fledge plugin |
