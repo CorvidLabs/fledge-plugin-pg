@@ -1,6 +1,6 @@
 ---
 id: CHG-0001-adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-postgres-fledge-plugin
-state: verifying
+state: accepted
 type: migration
 base_commit: 84c638c4b7c118df30ab1ae1711497f69df38419
 ---

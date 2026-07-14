@@ -13,6 +13,13 @@
       "timestamp": 1783955441,
       "digest": "7b696f7190402fd7dd40a583b269fd58885f2b170ff5b72afff7a33b367c9cb0",
       "note": "Closing approval recorded after successful committed-head native verification with exact requirement evidence."
+    },
+    {
+      "gate": "acceptance",
+      "actor": "user:0xLeif",
+      "timestamp": 1784061103,
+      "digest": "ba871b8906dfd5b2b4a4cceb211429d5d6214ff512ec5b4ef25e01d28c804ad9",
+      "note": "Closing approval after fresh exact-head native verification passed (20 offline tests, lint, syntax, and manifest) and the hosted PostgreSQL integration lane passed 33/33 tests; successor CHG-0002 closes full requirement evidence and lifecycle path coverage."
     }
   ],
   "reopenings": [
