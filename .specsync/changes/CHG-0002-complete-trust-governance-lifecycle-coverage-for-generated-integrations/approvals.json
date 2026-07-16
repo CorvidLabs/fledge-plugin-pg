@@ -1,0 +1,18 @@
+{
+  "approvals": [
+    {
+      "gate": "definition",
+      "actor": "user:0xLeif",
+      "timestamp": 1784164524,
+      "digest": "4bc1ffa12ebde4c4150074b48d675004a0ff790c6f7c2158261791c4fbcb8f08",
+      "note": "Definition approved for the evidence-only lifecycle scope after artifact review and successful native verification; no PostgreSQL behavior or canonical spec changes."
+    },
+    {
+      "gate": "acceptance",
+      "actor": "user:0xLeif",
+      "timestamp": 1784164583,
+      "digest": "e799d65aaa6f3a3efd2daebd9c63da5ae3ffa16957547ed23883a4a503ab6323",
+      "note": "Closing approval after strict SpecSync, all four agent integrations, native verification, and Trust doctor/verify passed. CHG-0002 closes lifecycle path coverage only and claims no semantic requirement evidence; hosted exact-head checks remain pending."
+    }
+  ]
+}

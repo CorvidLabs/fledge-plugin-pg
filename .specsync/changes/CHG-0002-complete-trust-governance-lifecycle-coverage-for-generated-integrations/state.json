@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "CHG-0002-complete-trust-governance-lifecycle-coverage-for-generated-integrations",
+  "slug": "complete-trust-governance-lifecycle-coverage-for-generated-integrations",
+  "title": "Complete Trust governance lifecycle coverage for generated integrations",
+  "description": "Complete Trust governance lifecycle coverage for generated integrations",
+  "kind": "migration",
+  "state": "accepted",
+  "base_commit": "dcc777def22eec7291cf636fa08b2ae0761fa195",
+  "created_at": 1784164444,
+  "updated_at": 1784164583,
+  "affected_specs": [],
+  "affected_paths": [
+    ".attest.json",
+    ".augur.toml",
+    ".claude/",
+    ".codex/",
+    ".cursor/",
+    ".gemini/",
+    "AGENTS.md"
+  ],
+  "no_spec_change": true,
+  "no_spec_change_rationale": "This evidence-only correction claims generated agent and policy files already introduced by the Trust migration; it changes no PostgreSQL plugin behavior or canonical specification.",
+  "acceptance_criteria": [
+    "Strict SpecSync passes with every generated governance path covered; all four agent integrations remain installed; native verification and Trust checks pass without changing PostgreSQL plugin behavior"
+  ],
+  "selected_artifacts": [
+    "context",
+    "research",
+    "design",
+    "plan",
+    "tasks",
+    "testing",
+    "docs"
+  ],
+  "dependencies": [],
+  "answers": {
+    "architecture_risk": "yes",
+    "public_contract": "no"
+  }
+}
