@@ -1,6 +1,6 @@
 ---
 id: CHG-0002-complete-trust-governance-lifecycle-coverage-for-generated-integrations
-state: accepted
+state: archived
 type: migration
 base_commit: dcc777def22eec7291cf636fa08b2ae0761fa195
 ---

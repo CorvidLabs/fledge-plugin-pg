@@ -5,10 +5,10 @@
   "title": "Complete Trust governance lifecycle coverage for generated integrations",
   "description": "Complete Trust governance lifecycle coverage for generated integrations",
   "kind": "migration",
-  "state": "accepted",
+  "state": "archived",
   "base_commit": "dcc777def22eec7291cf636fa08b2ae0761fa195",
   "created_at": 1784164444,
-  "updated_at": 1784164583,
+  "updated_at": 1784164935,
   "affected_specs": [],
   "affected_paths": [
     ".attest.json",
