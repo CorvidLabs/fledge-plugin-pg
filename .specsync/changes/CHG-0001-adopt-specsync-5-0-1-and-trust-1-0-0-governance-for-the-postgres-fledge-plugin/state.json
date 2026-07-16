@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "CHG-0001-adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-postgres-fledge-plugin",
+  "slug": "adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-postgres-fledge-plugin",
+  "title": "Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Postgres Fledge plugin",
+  "description": "Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Postgres Fledge plugin",
+  "kind": "migration",
+  "state": "accepted",
+  "canonical_applied": true,
+  "base_commit": "84c638c4b7c118df30ab1ae1711497f69df38419",
+  "created_at": 1783881795,
+  "updated_at": 1784061103,
+  "affected_specs": [
+    "pg"
+  ],
+  "affected_paths": [
+    "bin/",
+    "test/",
+    "plugin.toml",
+    "fledge.toml",
+    ".github/",
+    ".specsync/",
+    "specs/",
+    ".trust.toml"
+  ],
+  "no_spec_change": false,
+  "no_spec_change_rationale": null,
+  "acceptance_criteria": [
+    "SpecSync strict checks pass at explicit advisory threshold 0 for the extensionless Bash executable.",
+    "Existing requirements have deterministic IDs.",
+    "All four integrations are installed.",
+    "Trust doctor and verification pass.",
+    "ShellCheck, syntax, 20 offline gate tests, hosted Postgres integration tests, and manifest validation remain green."
+  ],
+  "selected_artifacts": [
+    "context",
+    "research",
+    "design",
+    "plan",
+    "tasks",
+    "testing",
+    "docs"
+  ],
+  "dependencies": [],
+  "answers": {
+    "architecture_risk": "yes",
+    "public_contract": "no"
+  }
+}
